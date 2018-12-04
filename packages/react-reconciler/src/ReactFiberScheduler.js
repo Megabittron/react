@@ -941,6 +941,22 @@ function resetChildExpirationTime(
   workInProgress.childExpirationTime = newChildExpirationTime;
 }
 
+function checkMode(workInProgress) {
+  let check = workInProgress.mode & ProfileMode;
+  if (check) {
+    startProfilerTimer(workInProgress);
+  }
+  nextUnitOfWork = completeWork(
+    workInProgress.alternate,
+    workInProgress,
+    nextRenderExpirationTime,
+  );
+  if (check) {
+    // Update render duration assuming we didn't error.
+    stopProfilerTimerIfRunningAndRecordDelta(workInProgress, false);
+  }
+}
+
 function completeUnitOfWork(workInProgress: Fiber): Fiber | null {
   // Attempt to complete the current unit of work, then move to the
   // next sibling. If there are no more siblings, return to the
@@ -967,18 +983,7 @@ function completeUnitOfWork(workInProgress: Fiber): Fiber | null {
       // Remember we're completing this unit so we can find a boundary if it fails.
       nextUnitOfWork = workInProgress;
       if (enableProfilerTimer) {
-        if (workInProgress.mode & ProfileMode) {
-          startProfilerTimer(workInProgress);
-        }
-        nextUnitOfWork = completeWork(
-          current,
-          workInProgress,
-          nextRenderExpirationTime,
-        );
-        if (workInProgress.mode & ProfileMode) {
-          // Update render duration assuming we didn't error.
-          stopProfilerTimerIfRunningAndRecordDelta(workInProgress, false);
-        }
+        checkMode(workInProgress);
       } else {
         nextUnitOfWork = completeWork(
           current,
