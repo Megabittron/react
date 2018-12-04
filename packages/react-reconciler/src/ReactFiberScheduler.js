@@ -1302,14 +1302,6 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
       resetContextDependences();
       resetHooks();
 
-      // Reset in case completion throws.
-      // This is only used in DEV and when replaying is on.
-      let mayReplay;
-      if (__DEV__ && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
-        mayReplay = mayReplayFailedUnitOfWork;
-        mayReplayFailedUnitOfWork = true;
-      }
-
       if (nextUnitOfWork === null) {
         // This is a fatal error.
         didFatal = true;
@@ -1321,18 +1313,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
           stopProfilerTimerIfRunningAndRecordDelta(nextUnitOfWork, true);
         }
 
-        if (__DEV__) {
-          // Reset global debug state
-          // We assume this is defined in DEV
-          (resetCurrentlyProcessingQueue: any)();
-        }
-
-        if (__DEV__ && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
-          if (mayReplay) {
-            const failedUnitOfWork: Fiber = nextUnitOfWork;
-            replayUnitOfWork(failedUnitOfWork, thrownValue, isYieldy);
-          }
-        }
+        DEVChecks(thrownValue, isYieldy);
 
         // TODO: we already know this isn't true in some cases.
         // At least this shows a nicer error message until we figure out the cause.
@@ -1369,7 +1350,9 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
       }
     }
     break;
-  } while (true);
+  } while (!didFatal);
+
+  //--------------------------------------------------------------------------------------------
 
   if (enableSchedulerTracing) {
     // Traced work is done for now; restore the previous interactions.
@@ -1508,6 +1491,30 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
 
   // Ready to commit.
   onComplete(root, rootWorkInProgress, expirationTime);
+}
+
+function DEVChecks(thrownValue, isYieldy) {
+  // Reset in case completion throws.
+  // This is only used in DEV and when replaying is on.
+  let mayReplay;
+  if (__DEV__ && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
+    mayReplay = mayReplayFailedUnitOfWork;
+    mayReplayFailedUnitOfWork = true;
+  }
+
+  if (__DEV__) {
+    // Reset global debug state
+    // We assume this is defined in DEV
+    (resetCurrentlyProcessingQueue: any)();
+  }
+
+  if (__DEV__ && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
+    if (mayReplay) {
+      const failedUnitOfWork: Fiber = nextUnitOfWork;
+      replayUnitOfWork(failedUnitOfWork, thrownValue, isYieldy);
+    }
+  }
+
 }
 
 function captureCommitPhaseError(sourceFiber: Fiber, value: mixed) {
