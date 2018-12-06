@@ -1221,13 +1221,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
 
   const expirationTime = root.nextExpirationTimeToWorkOn;
 
-  // Check if we're starting from a fresh stack, or if we're resuming from
-  // previously yielded work.
-  if (
-    expirationTime !== nextRenderExpirationTime ||
-    root !== nextRoot ||
-    nextUnitOfWork === null
-  ) {
+  if (checkResuming(expirationTime, root)) {
     // Reset the stack and start working from the root.
     resetStack();
     nextRoot = root;
@@ -1240,19 +1234,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
     root.pendingCommitExpirationTime = NoWork;
 
     if (enableSchedulerTracing) {
-      // Determine which interactions this batch of work currently includes,
-      // So that we can accurately attribute time spent working on it,
-      // And so that cascading work triggered during the render phase will be associated with it.
-      const interactions: Set<Interaction> = new Set();
-      root.pendingInteractionMap.forEach(
-        (scheduledInteractions, scheduledExpirationTime) => {
-          if (scheduledExpirationTime >= expirationTime) {
-            scheduledInteractions.forEach(interaction =>
-              interactions.add(interaction),
-            );
-          }
-        },
-      );
+      const interactions: Set<Interaction> = determineInteractions(root, expirationTime);
 
       // Store the current set of interactions on the FiberRoot for a few reasons:
       // We can re-use it in hot functions like renderRoot() without having to recalculate it.
@@ -1260,26 +1242,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
       // This also provides DevTools with a way to access it when the onCommitRoot() hook is called.
       root.memoizedInteractions = interactions;
 
-      if (interactions.size > 0) {
-        const subscriber = __subscriberRef.current;
-        if (subscriber !== null) {
-          const threadID = computeThreadID(
-            expirationTime,
-            root.interactionThreadID,
-          );
-          try {
-            subscriber.onWorkStarted(interactions, threadID);
-          } catch (error) {
-            // Work thrown by an interaction tracing subscriber should be rethrown,
-            // But only once it's safe (to avoid leaveing the scheduler in an invalid state).
-            // Store the error for now and we'll re-throw in finishRendering().
-            if (!hasUnhandledError) {
-              hasUnhandledError = true;
-              unhandledError = error;
-            }
-          }
-        }
-      }
+      selectSubscriber(interactions, expirationTime, root);
     }
   }
 
@@ -1292,9 +1255,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
   }
 
   let didFatal = false;
-
   startWorkLoopTimer(nextUnitOfWork);
-
   do {
     try {
       workLoop(isYieldy);
@@ -1313,7 +1274,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
           stopProfilerTimerIfRunningAndRecordDelta(nextUnitOfWork, true);
         }
 
-        DEVChecks(thrownValue, isYieldy);
+        renderRootDEVChecks(thrownValue, isYieldy);
 
         // TODO: we already know this isn't true in some cases.
         // At least this shows a nicer error message until we figure out the cause.
@@ -1347,12 +1308,11 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
           nextUnitOfWork = completeUnitOfWork(sourceFiber);
           continue;
         }
+
       }
     }
     break;
   } while (!didFatal);
-
-  //--------------------------------------------------------------------------------------------
 
   if (enableSchedulerTracing) {
     // Traced work is done for now; restore the previous interactions.
@@ -1493,7 +1453,55 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
   onComplete(root, rootWorkInProgress, expirationTime);
 }
 
-function DEVChecks(thrownValue, isYieldy) {
+function selectSubscriber(interactions, expirationTime, root) {
+  if (interactions.size > 0) {
+    const subscriber = __subscriberRef.current;
+    if (subscriber !== null) {
+      const threadID = computeThreadID(
+        expirationTime,
+        root.interactionThreadID,
+      );
+      try {
+        subscriber.onWorkStarted(interactions, threadID);
+      } catch (error) {
+        // Work thrown by an interaction tracing subscriber should be rethrown,
+        // But only once it's safe (to avoid leaveing the scheduler in an invalid state).
+        // Store the error for now and we'll re-throw in finishRendering().
+        if (!hasUnhandledError) {
+          hasUnhandledError = true;
+          unhandledError = error;
+        }
+      }
+    }
+  }
+}
+
+// Determine which interactions this batch of work currently includes,
+// So that we can accurately attribute time spent working on it,
+// And so that cascading work triggered during the render phase will be associated with it.
+function determineInteractions(root, expirationTime) {
+  const interactions: Set<Interaction> = new Set();
+  root.pendingInteractionMap.forEach(
+    (scheduledInteractions, scheduledExpirationTime) => {
+      if (scheduledExpirationTime >= expirationTime) {
+        scheduledInteractions.forEach(interaction =>
+          interactions.add(interaction),
+        );
+      }
+    },
+  );
+  return interactions;
+}
+
+// Check if we're starting from a fresh stack, or if we're resuming from
+// previously yielded work.
+function checkResuming(expirationTime, root) {
+  return (expirationTime !== nextRenderExpirationTime ||
+    root !== nextRoot ||
+    nextUnitOfWork === null);
+}
+
+function renderRootDEVChecks(thrownValue, isYieldy) {
   // Reset in case completion throws.
   // This is only used in DEV and when replaying is on.
   let mayReplay;
