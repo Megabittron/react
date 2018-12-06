@@ -1053,7 +1053,6 @@ function completeUnitOfWork(workInProgress: Fiber): Fiber | null {
       } else if (returnFiber !== null) {
         // If there's no more work in this returnFiber. Complete the returnFiber.
         workInProgress = returnFiber;
-        continue;
       } else {
         // We've reached the root.
         return null;
@@ -1119,7 +1118,6 @@ function completeUnitOfWork(workInProgress: Fiber): Fiber | null {
       } else if (returnFiber !== null) {
         // If there's no more work in this returnFiber. Complete the returnFiber.
         workInProgress = returnFiber;
-        continue;
       } else {
         return null;
       }
