@@ -1026,6 +1026,13 @@ function mountIndeterminateComponent(
 }
 
 function validateFunctionComponentInDev(workInProgress: Fiber, Component: any) {
+  checkComponent(Component);
+  checkWorkInProgress(workInProgress);
+  functionDerivedState(Component);
+  objectDerivedState(Component);
+}
+
+function checkComponent(Component) {
   if (Component) {
     warningWithoutStack(
       !Component.childContextTypes,
@@ -1033,13 +1040,15 @@ function validateFunctionComponentInDev(workInProgress: Fiber, Component: any) {
       Component.displayName || Component.name || 'Component',
     );
   }
+}
+
+function checkWorkInProgress(workInProgress) {
   if (workInProgress.ref !== null) {
     let info = '';
     const ownerName = getCurrentFiberOwnerNameInDevOrNull();
     if (ownerName) {
       info += '\n\nCheck the render method of `' + ownerName + '`.';
     }
-
     let warningKey = ownerName || workInProgress._debugID || '';
     const debugSource = workInProgress._debugSource;
     if (debugSource) {
@@ -1050,12 +1059,14 @@ function validateFunctionComponentInDev(workInProgress: Fiber, Component: any) {
       warning(
         false,
         'Function components cannot be given refs. ' +
-          'Attempts to access this ref will fail.%s',
+        'Attempts to access this ref will fail.%s',
         info,
       );
     }
   }
+}
 
+function functionDerivedState(Component) {
   if (typeof Component.getDerivedStateFromProps === 'function') {
     const componentName = getComponentName(Component) || 'Unknown';
 
@@ -1068,7 +1079,9 @@ function validateFunctionComponentInDev(workInProgress: Fiber, Component: any) {
       didWarnAboutGetDerivedStateOnFunctionComponent[componentName] = true;
     }
   }
+}
 
+function objectDerivedState(Component) {
   if (
     typeof Component.contextType === 'object' &&
     Component.contextType !== null
